@@ -1,19 +1,29 @@
 #include <BME280I2C.h>
 #include <WiFiS3.h>
 #include <Wire.h>
+#include <ThingSpeak.h>
 #include "secret.h"
 
 #define SERIAL_BAUD 115200
 
-char ssid[] = SECRET_SSID;
-char pass[] = SECRET_PASS;
+// WiFi credentials
+char ssid[] = SECRET_WIFI_SSID;
+char pass[] = SECRET_WIFI_PASS;
+WiFiClient client;
+
+// ThingSpeak variables
+unsigned long channelId = SECRET_THINGSPEAK_CHANNEL_ID;
+char writeApiKey[] = SECRET_THINGSPEAK_API_KEY;
+
+// Status
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 int led =  LED_BUILTIN;
 
+// BME280 variables
 BME280I2C bme;    // Default : forced mode, standby time = 1000 ms
                   // Oversampling = pressure ×1, temperature ×1, humidity ×1, filter off,
 
-//////////////////////////////////////////////////////////////////
+//////////////////////        INIT    ///////////////////////////
 void setup()
 {
   Serial.begin(SERIAL_BAUD);
@@ -69,16 +79,21 @@ void setup()
   Serial.print("You're connected to the network");
   printCurrentNet();
   printWifiData();
+
+// Setup Thingspeak client
+    ThingSpeak.begin(client);
 }
 
-//////////////////////////////////////////////////////////////////
+//////////////////////////   MAIN  ////////////////////////////
 void loop()
 {
    printBME280Data(&Serial);
-   delay(500);
+   delay(15000);
+   send_data(&Serial);
+   delay(15000);
 }
 
-//////////////////////////////////////////////////////////////////
+///////////////////////////    BME280          ///////////////////////
 void printBME280Data
 (
    Stream* client
@@ -104,7 +119,34 @@ void printBME280Data
    delay(1000);
 }
 
-//////////////////////////////////////////////////////////////////
+void send_data
+(
+   Stream* client
+)
+{
+   float temp(NAN), hum(NAN), pres(NAN);
+
+   BME280::TempUnit tempUnit(BME280::TempUnit_Celsius);
+   BME280::PresUnit presUnit(BME280::PresUnit_Pa);
+
+   bme.read(pres, temp, hum, tempUnit, presUnit);
+
+   ThingSpeak.setField(1, temp);
+   ThingSpeak.setField(2, hum);
+   ThingSpeak.setField(3, pres);
+
+    int ts_response = ThingSpeak.writeFields(channelId, writeApiKey);
+    if(ts_response == 200) {
+        client->println("ThingSpeak channel update successful.");
+    }
+    else  {
+        client->println("ThingSpeak channel update error! Error code: " + String(ts_response));
+    }
+
+}
+
+
+////////////////////    WIFI        //////////////////////////////
 void printWifiData() {
   // print your board's IP address:
   IPAddress ip = WiFi.localIP();
@@ -154,3 +196,4 @@ void printMacAddress(byte mac[]) {
   }
   Serial.println();
 }
+//////////////////////        THINGSPEAK      ///////////////////////////
